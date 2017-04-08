@@ -12,36 +12,9 @@
 // options: how often + max invocations
 
 
-let {Readable, Writable, Transform} = require('stream')
-
-
-function func2Transform(func, options = {lineSep: "\r\n", joinChar: ","}){
-	let sanitizedFunc = stringifyByType(func, options)
-	let theTransform = new Transform()
-	theTransform._transform = function(chunk, encoding, done){
-		let newData = chunk.toString().split(options.lineSep).map(sanitizedFunc).join(options.lineSep)
-		this.push(newData)
-		done()
-	}
-	return theTransform
-}
-
-function stringifyByType(func, options){
-    return function(oldData){
-	  let newData = func(oldData)
-      if(!newData){ // takes care of null and undefined 
-        return ''
-      } else if(Array.isArray(newData)){
-        return newData.join(options.joinChar) + options.linesep
-      } else if(typeof newData == 'object'){
-        return JSON.stringify(newData) + options.linesep
-      } else {
-        return newData.toString()
-      }
-	}
-  }
 
   let funcString = ''
+  let funcName = ''
 
   console.log('give me a function defintion, hit return when you\'re done')
   let repl = require('repl')
@@ -49,37 +22,54 @@ function stringifyByType(func, options){
   repl.start({prompt: '> ', eval: myEval});
 
   function myEval(cmd, context, filename, callback){
-    funcString = cmd
-    console.log("Thank you for your function.")
-    try {
-      console.log(`Trying: yourFunction("99 luftballoons\\n")`)
-      console.log('> ' + eval(cmd)("99 luftballoons\n") )
-      console.log('seems to work great')
+    if(!funcString){
+      console.log("Thank you for your function.")
+      try {
+        console.log(`Trying: yourFunction("99 luftballoons\\n")`)
+        console.log('> ' + eval(cmd)("99 luftballoons\n") )
+        funcString = cmd.trim()
+        callback('seems to work great, what do you want to call it?')
+      } catch (e){
+        callback(e + '\n' + "Please try again, I believe in you.")
+      }
+    } else {
+      funcName = cmd.trim()
+      console.log(`${funcName} is a terrific name. I'll save it to disk as ${funcName}.js\nPipe things to it like so: "echo 99luftballoons | node ${funcName} > newFile.txt"`)
+      writeProgram(funcName, funcString)
       process.exit()
-    } catch (e){
-      callback(e + '\n' + "Please try again, I believe in you.")
     }
   }
 
 
+function writeProgram(funcName, funcString){
+  let lineSep = JSON.stringify(require('os').EOL)
+  require('fs').writeFileSync(`${funcName}.js`, 
+`let {Readable, Writable, Transform} = require('stream')
+  function func2Transform(func, options = {lineSep: ${lineSep}, joinChar: ","}){
+    let sanitizedFunc = stringifyByType(func, options)
+    let theTransform = new Transform()
+    theTransform._transform = function(chunk, encoding, done){
+      let newData = chunk.toString().split(options.lineSep).map(sanitizedFunc).join(options.lineSep)
+      this.push(newData)
+      done()
+    }
+    return theTransform
+  }
 
-// let rs = new Readable()
+  function stringifyByType(func, options){
+      return function(oldData){
+      let newData = func(oldData)
+        if(!newData){ // takes care of null and undefined 
+          return ''
+        } else if(Array.isArray(newData)){
+          return newData.join(options.joinChar) + options.linesep
+        } else if(typeof newData == 'object'){
+          return JSON.stringify(newData) + options.linesep
+        } else {
+          return newData.toString()
+        }
+    }
+  }
 
-// for(let i = 0; i < 37; i++){
-//   rs.push(i.toString())
-// }
-
-// rs.push(null)
-
-// process.stdin.setEncoding('utf8');
-// process.stdin.pipe(process.stdout)
-
-// process.stdin.pipe(func2Transform(each => parseInt(each) * 2)).pipe(process.stdout)
-
-
-// process.stdin.pipe(f2t(str => Math.sqrt(parseInt(str)))).pipe(f2t(str => {
-//   if(Number(str) == parseInt(str)){
-//     return str
-//   }
-// })).pipe(process.stdout)
-
+  process.stdin.pipe(func2Transform(eval(${funcString}))).pipe(process.stdout)`)
+}
